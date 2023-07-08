@@ -1,16 +1,15 @@
+from airflow.models.variable import Variable
+from airflow.providers.google.cloud.transfers.gcs_to_bigquery import GCSToBigQueryOperator
+from airflow.providers.google.cloud.transfers.local_to_gcs import LocalFilesystemToGCSOperator
+from airflow.operators.dummy import DummyOperator
+from airflow.decorators import dag, task
+from airflow.utils.dates import days_ago
+import re
+import pandas as pd
 import os
 import sys
 sys.path.append(os.path.join(os.path.dirname(os.path.abspath(__file__)), '..'))
 
-import pandas as pd
-import re
-
-from airflow.utils.dates import days_ago
-from airflow.decorators import dag, task
-from airflow.operators.dummy import DummyOperator
-from airflow.providers.google.cloud.transfers.local_to_gcs import LocalFilesystemToGCSOperator
-from airflow.providers.google.cloud.transfers.gcs_to_bigquery import GCSToBigQueryOperator
-from airflow.models.variable import Variable
 
 DATASET_ID = Variable.get("DATASET_ID")
 BASE_PATH = Variable.get("BASE_PATH")
@@ -18,8 +17,9 @@ BUCKET_NAME = Variable.get("BUCKET_NAME")
 GOOGLE_CLOUD_CONN_ID = Variable.get("GOOGLE_CLOUD_CONN_ID")
 BIGQUERY_TABLE_NAME = "bs_reviews"
 GCS_OBJECT_NAME = "extract_reviews.csv"
-DATA_PATH =f"{BASE_PATH}/data"
+DATA_PATH = f"{BASE_PATH}/data"
 OUT_PATH = f"{DATA_PATH}/{GCS_OBJECT_NAME}"
+
 
 @dag(
     default_args={
@@ -34,31 +34,33 @@ OUT_PATH = f"{DATA_PATH}/{GCS_OBJECT_NAME}"
 def bs_reviews_dag():
     @task()
     def merge_reviews(reviews: list):
-      df_merge = pd.concat([pd.read_json(review) for review in reviews], ignore_index=True)
-      print(df_merge)
-      df_merge.to_csv(OUT_PATH, index=False, header=False)
+        df_merge = pd.concat([pd.read_json(review)
+                             for review in reviews], ignore_index=True)
+        print(df_merge)
+        df_merge.to_csv(OUT_PATH, index=False, header=False)
 
     @task()
     def extract_reviews(filename):
-      print(filename)
-      file_path = f"{DATA_PATH}/{filename}"
-      if 'csv' in filename:
-        df = pd.read_csv(file_path)
-      else:
-        df = pd.read_excel(file_path)
-      print(df)
-      return df.to_json()
+        print(filename)
+        file_path = f"{DATA_PATH}/{filename}"
+        if 'csv' in filename:
+            df = pd.read_csv(file_path)
+        else:
+            df = pd.read_excel(file_path)
+        print(df)
+        return df.to_json()
 
     start = DummyOperator(task_id='start')
     end = DummyOperator(task_id='end')
-    
+
     filenames = os.listdir(DATA_PATH)
-    filtered_filename = list(filter(lambda filename: re.match(r"(^reviews)", filename), filenames))
+    filtered_filename = list(
+        filter(lambda filename: re.match(r"(^reviews)", filename), filenames))
 
     extracted_list = []
     for i in range(len(filtered_filename)):
-      extracted = extract_reviews(filtered_filename[i])
-      extracted_list.append(extracted)
+        extracted = extract_reviews(filtered_filename[i])
+        extracted_list.append(extracted)
 
     merged = merge_reviews(extracted_list)
 
@@ -76,21 +78,23 @@ def bs_reviews_dag():
         bucket=BUCKET_NAME,
         source_objects=[GCS_OBJECT_NAME],
         destination_project_dataset_table=f"{DATASET_ID}.{BIGQUERY_TABLE_NAME}",
-        schema_fields=[ #based on https://cloud.google.com/bigquery/docs/schemas
+        schema_fields=[  # based on https://cloud.google.com/bigquery/docs/schemas
             {'name': 'listing_id', 'type': 'INT64', 'mode': 'NULLABLE'},
             {'name': 'id', 'type': 'INT64', 'mode': 'REQUIRED'},
             {'name': 'date', 'type': 'DATE', 'mode': 'NULLABLE'},
             {'name': 'reviewer_id', 'type': 'INT64', 'mode': 'NULLABLE'},
             {'name': 'reviewer_name', 'type': 'STRING', 'mode': 'NULLABLE'},
-            {'name': 'comments', 'type': 'STRING', 'mode': 'NULLABLE'},            
-        ], 
+            {'name': 'comments', 'type': 'STRING', 'mode': 'NULLABLE'},
+        ],
         autodetect=False,
         allow_quoted_newlines=True,
-        write_disposition='WRITE_TRUNCATE', #If the table already exists - overwrites the table data
+        # If the table already exists - overwrites the table data
+        write_disposition='WRITE_TRUNCATE',
     )
 
     start >> extracted_list >> merged
     merged >> stored_data_gcs
     stored_data_gcs >> loaded_data_bigquery >> end
+
 
 bs_customer_invoice_chinook_etl = bs_reviews_dag()
