@@ -112,7 +112,8 @@ numpy==1.20.2
 oauthlib==2.1.0
 openapi-schema-validator==0.1.5
 openapi-spec-validator==0.3.0
-openpyxl==3.0.7
+openpyxl>=2.5.6
+xlrd>=1.1.0
 packaging==20.9
 pandas==1.2.4
 pandas-gbq==0.14.1
@@ -163,7 +164,6 @@ uritemplate==3.0.1
 urllib3==1.25.11
 Werkzeug==1.0.1
 WTForms==2.3.3
-xlrd==2.0.1
 zipp==3.4.1
 zope.event==4.5.0
 zope.interface==5.4.0
